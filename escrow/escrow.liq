@@ -15,15 +15,16 @@ type penalty_to_state =
   | Transferring          (* penalty recipeint awaits confirmation *)
 
 type storage = {
-    mBuyer        : address;          (* transfer quantity from *)
-    mSeller       : address;          (* transfer quantity to *)
-    mPenaltyTo    : address;          (* tranfer penalty to; defaulted to buyer *)
-    mQuantity     : nat;              (* exchanged quantity *)
-    mPenalty      : nat;              (* seller's penalty *)
-    mIncentive    : nat;              (* buyer's penalty *)
-    mState        : state;            (* contract's state *)
-    mConfDate     : timestamp option; (* start of confirmation state *)
-    mTermDate     : timestamp option; (* end of confirmation phase *)
+    mBuyer          : address;              (* transfer quantity from *)
+    mSeller         : address;              (* transfer quantity to *)
+    mPenaltyTo      : address;              (* tranfer penalty to; defaulted to buyer *)
+    mPenaltyToState : penalty_to_state;     (* transfer penalty to state *)
+    mQuantity       : nat;                  (* exchanged quantity *)
+    mPenalty        : nat;                  (* seller's penalty *)
+    mIncentive      : nat;                  (* buyer's penalty *)
+    mState          : state;                (* contract's state *)
+    mConfDate       : timestamp option;     (* start of confirmation state *)
+    mTermDate       : timestamp option;     (* end of confirmation phase *)
   }
 
 let[@inline] gEmptyOp = ([] : operation list)
@@ -45,15 +46,16 @@ let%init storage
     | None -> lBuyer
   in
   {
-    mBuyer      = lBuyer;
-    mSeller     = iSeller;
-    mPenaltyTo  = lPenaltyTo;
-    mQuantity   = iQuantity;
-    mPenalty    = iPenalty;
-    mIncentive  = iIncentive;
-    mState      = Created;
-    mConfDate   = iConfDate;
-    mTermDate   = iTermDate;
+    mBuyer          = lBuyer;
+    mSeller         = iSeller;
+    mPenaltyTo      = lPenaltyTo;
+    mPenaltyToState = Transferred;
+    mQuantity       = iQuantity;
+    mPenalty        = iPenalty;
+    mIncentive      = iIncentive;
+    mState          = Created;
+    mConfDate       = iConfDate;
+    mTermDate       = iTermDate;
   }
 
 (*
@@ -75,15 +77,16 @@ let%entry abort (iParam : unit) iStorage =
   if isCreated iStorage.mState
   then
     let lStorage = {
-        mBuyer      = iStorage.mBuyer;
-        mSeller     = iStorage.mSeller;
-        mPenaltyTo  = iStorage.mPenaltyTo;
-        mQuantity   = iStorage.mQuantity;
-        mPenalty    = iStorage.mPenalty;
-        mIncentive  = iStorage.mIncentive;
-        mState      = Terminated Aborted;
-        mConfDate   = iStorage.mConfDate;
-        mTermDate   = iStorage.mTermDate;
+        mBuyer          = iStorage.mBuyer;
+        mSeller         = iStorage.mSeller;
+        mPenaltyTo      = iStorage.mPenaltyTo;
+        mPenaltyToState = iStorage.mPenaltyToState;
+        mQuantity       = iStorage.mQuantity;
+        mPenalty        = iStorage.mPenalty;
+        mIncentive      = iStorage.mIncentive;
+        mState          = Terminated Aborted;
+        mConfDate       = iStorage.mConfDate;
+        mTermDate       = iStorage.mTermDate;
       } in
     (gEmptyOp, lStorage)
   else
