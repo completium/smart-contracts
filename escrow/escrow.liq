@@ -25,6 +25,13 @@ type penalty_to_state =
   | PTTransferring                          (* penalty recipeint awaits confirmation *)
  *)
 
+let[@inline] gCreated              = "Created"
+let[@inline] gTransferringPenalty  = "TransferringPenalty"
+let[@inline] gConfirmed            = "Confirmed"
+let[@inline] gAborted              = "Aborted"
+let[@inline] gSucceeded            = "Succeeded"
+let[@inline] gFailed               = "Failed"
+
 type state = string
 
 type storage = {
@@ -72,47 +79,61 @@ let%init storage
     State utilities
    ************************************************************************************)
 
-let isTransferring (iState : state) =
-(*  match iState with
-  | TransferringPenalty -> true
-  | _ -> false *)
-  iState = "TransferringPenalty"
+let isTransferring (iStorage : storage) =
+  if iStorage.mState <> gTransferringPenalty
+  then failwith "State should be 'TransferringPenalty'."
+  else ()
 
-let isCreated (iState : state) =
-(*  match iState with
-  | Created -> true
-  | _ -> false *)
-  iState = "Created"
+let isCreated (iStorage : storage) =
+  if iStorage.mState <> gCreated
+  then Current.failwith "State should be 'Created'."
+  else ()
 
-let isConfirmed (iState : state) =
-(*  match iState with
-  | Confirmed -> true
-  | _ -> false *)
-  iState = "Confirmed"
+let isConfirmed (iStorage : storage) =
+  if iStorage.mState <> gConfirmed
+  then Current.failwith "State should be 'Confirmed'."
+  else ()
+
+let isTransferringPenaltyOrCreated (iStorage : storage) =
+  if not (iStorage.mState <> gCreated || (iStorage.mState <> gTransferringPenalty))
+  then Current.failwith "State should be 'TransferringPenalty' or 'Created'."
+  else ()
 
 let setState (iState : state) (iStorage : storage) =
   let lStorage = iStorage.mState <- iState in
   lStorage
 
 (* ************************************************************************************
+    Roles checking
+   ************************************************************************************)
+
+let isSeller (iStorage : storage) =
+  let lSender = Current.sender () in
+  let lSeller = keyh_to_addr iStorage.mSeller in
+  if lSender <> lSeller
+  then Current.failwith "Can only be called by seller."
+  else ()
+
+let isBuyer (iStorage : storage) =
+  let lSender = Current.sender () in
+  let lBuyer = keyh_to_addr iStorage.mBuyer in
+  if lSender <> lBuyer
+  then Current.failwith "Can only be called by buyer."
+  else ()
+
+(* ************************************************************************************
     Seller's penalty initialisation
    ************************************************************************************)
 
 let%entry transferPenalty (iParam : unit) iStorage =
-  if not (isTransferring iStorage.mState)
-  then failwith "Penalty is already set."
-  else
-    let lSender = Current.sender () in
-    let lSeller = keyh_to_addr iStorage.mSeller in
-    if lSender <> lSeller
-    then failwith "transferPenaly entry can only be called by seller."
-    else
-      let lAmount = Current.amount () in
-      if lAmount > iStorage.mPenalty
-      then failwith "Too much tez for penalty."
-      else if lAmount < iStorage.mPenalty
-      then failwith "Not enough tez for penalty."
-      else (gEmptyOp, setState "Created" iStorage)
+  isTransferring iStorage;
+  isSeller iStorage;
+  let lAmount = Current.amount () in
+  if lAmount > iStorage.mPenalty
+  then failwith "Too much tez for penalty."
+  else if lAmount < iStorage.mPenalty
+  then failwith "Not enough tez for penalty."
+  else (gEmptyOp, setState gCreated iStorage)
 
 (* ************************************************************************************
     Abort contract
@@ -133,30 +154,29 @@ let transferBack (iStorage : storage) =
   lOps
 
 let%entry abortContract (iParam : unit) iStorage =
-  if not ((isCreated iStorage.mState) || (isTransferring iStorage.mState))
-  then Current.failwith "Abortion is possible only in Created state."
-  else
-    let lOps = transferBack iStorage in
-    (lOps, setState "Aborted" iStorage)
+  (* Filter ******************************************)
+  isTransferringPenaltyOrCreated iStorage;
+  (* *************************************************)
+  (transferBack iStorage, setState gAborted iStorage)
 
 (* ************************************************************************************
     Confirm contract
    ************************************************************************************)
 
 let%entry confirmContract (iParam : unit) iStorage =
-  if not (isCreated iStorage.mState)
-  then Current.failwith "Invalid contract state for confirmation."
-  else
-    let lBalance = Current.balance () in
-    let lTotal = iStorage.mIncentive + iStorage.mQuantity + iStorage.mPenalty in
-    if lBalance > lTotal
-    then failwith "Too much tez sent to contract."
-    else if lBalance < lTotal
-    then failwith "Not enough tez sent to contract."
-    else (gEmptyOp, setState "Confirmed" iStorage)
+  (* Filter ******************************************)
+  isCreated iStorage;
+  (* *************************************************)
+  let lBalance = Current.balance () in
+  let lTotal = iStorage.mIncentive + iStorage.mQuantity + iStorage.mPenalty in
+  if lBalance > lTotal
+  then failwith "Too much tez sent to contract."
+  else if lBalance < lTotal
+  then failwith "Not enough tez sent to contract."
+  else (gEmptyOp, setState "Confirmed" iStorage)
 
 (* ************************************************************************************
-    Payment utilities
+    Success payment operations
    ************************************************************************************)
 
 let transferAmounts (iStorage : storage) =
@@ -184,16 +204,11 @@ let transferAmounts (iStorage : storage) =
    ************************************************************************************)
 
 let%entry transferPayment (iParam : unit) iStorage =
-  if not (isConfirmed iStorage.mState)
-  then Current.failwith "Payment is only possible in Confirmed state."
-  else
-    let lSender = Current.sender () in
-    let lBuyer = keyh_to_addr iStorage.mBuyer in
-    if lSender <> lBuyer
-    then Current.failwith "confirmPayment can only be called by buyer."
-    else
-      let lOps = transferAmounts iStorage in
-      (lOps, setState "Succeeded" iStorage)
+  (* Filter ******************************************)
+  isConfirmed iStorage;
+  isBuyer iStorage;
+  (* *************************************************)
+  (transferAmounts iStorage, setState "Succeeded" iStorage)
 
 (* ************************************************************************************
     Receive payment
@@ -204,20 +219,18 @@ let%entry transferPayment (iParam : unit) iStorage =
  - tez quantity
  - nonce *)
 let%entry receivePayment (iParam : signature * nat) iStorage =
-  if not (isConfirmed iStorage.mState)
-  then Current.failwith "Payment is only possible in Confirmed state."
+  (* Filter ******************************************)
+  isConfirmed iStorage;
+  isSeller iStorage;
+  (* *************************************************)
+  let lSig = iParam.(0) in
+  let lNonce = iParam.(1) in
+  let lContractAddr = Contract.address (Contract.self ()) in
+  (* Shall we include buyer address in data ? *)
+  (* Shall we store used nonce ? (see double spend attack) *)
+  let lData = (lContractAddr, iStorage.mQuantity, lNonce) in
+  let lHData = Crypto.blake2b (Bytes.pack lData) in
+  if not (Crypto.check iStorage.mBuyerPKey lSig lHData)
+  then Current.failwith "Signature not checked."
   else
-    let lSender = Current.sender () in
-    let lSeller = keyh_to_addr iStorage.mSeller in
-    if lSender <> lSeller
-    then Current.failwith "receivePayment can only be called by seller."
-    else
-      let lSig = iParam.(0) in
-      let lNonce = iParam.(1) in
-      let lContractAddr = Contract.address (Contract.self ()) in
-      let lData = Crypto.blake2b (Bytes.pack (lContractAddr, iStorage.mQuantity, lNonce)) in
-      if not (Crypto.check iStorage.mBuyerPKey lSig lData)
-      then Current.failwith "Signature not checked."
-      else
-        let lOps = transferAmounts iStorage in
-        (lOps, setState "Succeeded" iStorage)
+    (transferAmounts iStorage, setState "Succeeded" iStorage)
