@@ -50,7 +50,7 @@ let%init storage
   let lPenaltyTo =
     match iPenaltyTo with
     | Some a -> a
-    | None -> iBuyer
+    | None -> iSeller
   in
   let lState =
     if iPenalty = 0tz
