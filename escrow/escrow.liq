@@ -46,41 +46,27 @@ let%init storage
       (iQuantity  : tez)
       (iPenalty   : tez)
       (iIncentive : tez) =
-  (* It is assumed that contract is initiated by buyer *)
-  let lBuyer = Current.sender () in
-  (*let lBuyerAddr = keyh_to_addr iBuyer in*)
-  let lBuyerAddr = Contract.address (Account.default iBuyer) in
-  if lBuyerAddr <> lBuyer
-  then failwith "Buyer's key_hash not equal to contract's sender."
-  else
-    (* retrieve transaction amount and store it *)
-    let lBalance = Current.balance () in
-    if lBalance > iIncentive + iQuantity
-    then failwith "Too much tez sent to contract."
-    else if lBalance < iIncentive + iQuantity
-    then failwith "Not enough tez sent to contract."
-    else
-      (* iPenaltyTo's address is defaulted to buyer's address *)
-      let lPenaltyTo =
-        match iPenaltyTo with
-        | Some a -> a
-        | None -> iBuyer
-      in
-      let lState =
-        if iPenalty = 0tz
-        then "Created"
-        else "TransferringPenalty"
-      in
-      {
-        mBuyer          = iBuyer;
-        mBuyerPKey      = iBuyerPKey;
-        mSeller         = iSeller;
-        mPenaltyTo      = lPenaltyTo;
-        mQuantity       = iQuantity;
-        mPenalty        = iPenalty;
-        mIncentive      = iIncentive;
-        mState          = lState;
-      }
+  (* iPenaltyTo's address is defaulted to buyer's address *)
+  let lPenaltyTo =
+    match iPenaltyTo with
+    | Some a -> a
+    | None -> iBuyer
+  in
+  let lState =
+    if iPenalty = 0tz
+    then "Created"
+    else "TransferringPenalty"
+  in
+  {
+    mBuyer          = iBuyer;
+    mBuyerPKey      = iBuyerPKey;
+    mSeller         = iSeller;
+    mPenaltyTo      = lPenaltyTo;
+    mQuantity       = iQuantity;
+    mPenalty        = iPenalty;
+    mIncentive      = iIncentive;
+    mState          = lState;
+  }
 
 (* ************************************************************************************
     State utilities
@@ -112,7 +98,7 @@ let setState (iState : state) (iStorage : storage) =
     Seller's penalty initialisation
    ************************************************************************************)
 
-let%entry transferPenaly (iParam : unit) iStorage =
+let%entry transferPenalty (iParam : unit) iStorage =
   if not (isTransferring iStorage.mState)
   then failwith "Penalty is already set."
   else
@@ -121,10 +107,10 @@ let%entry transferPenaly (iParam : unit) iStorage =
     if lSender <> lSeller
     then failwith "transferPenaly entry can only be called by seller."
     else
-      let lBalance = Current.balance () in
-      if lBalance > iStorage.mPenalty
+      let lAmount = Current.amount () in
+      if lAmount > iStorage.mPenalty
       then failwith "Too much tez for penalty."
-      else if lBalance < iStorage.mPenalty
+      else if lAmount < iStorage.mPenalty
       then failwith "Not enough tez for penalty."
       else (gEmptyOp, setState "Created" iStorage)
 
@@ -147,7 +133,7 @@ let transferBack (iStorage : storage) =
   lOps
 
 let%entry abortContract (iParam : unit) iStorage =
-  if not (isCreated iStorage.mState)
+  if not (isCreated iStorage.mState) || not (isTransferring iStorage.mState)
   then Current.failwith "Abortion is possible only in Created state."
   else
     let lOps = transferBack iStorage in
@@ -160,7 +146,14 @@ let%entry abortContract (iParam : unit) iStorage =
 let%entry confirmContract (iParam : unit) iStorage =
   if not (isCreated iStorage.mState)
   then Current.failwith "Invalid contract state for confirmation."
-  else (gEmptyOp, setState "Confirmed" iStorage)
+  else
+    let lBalance = Current.balance () in
+    let lTotal = iStorage.mIncentive + iStorage.mQuantity + iStorage.mPenalty in
+    if lBalance > lTotal
+    then failwith "Too much tez sent to contract."
+    else if lBalance < lTotal
+    then failwith "Not enough tez sent to contract."
+    else (gEmptyOp, setState "Confirmed" iStorage)
 
 (* ************************************************************************************
     Payment utilities
