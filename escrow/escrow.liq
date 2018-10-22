@@ -126,8 +126,10 @@ let isBuyer (iStorage : storage) =
    ************************************************************************************)
 
 let%entry transferPenalty (iParam : unit) iStorage =
+  (* Pre condition(s) ******************************************)
   isTransferring iStorage;
   isSeller iStorage;
+  (* ***********************************************************)
   let lAmount = Current.amount () in
   if lAmount > iStorage.mPenalty
   then failwith "Too much tez for penalty."
@@ -154,9 +156,9 @@ let transferBack (iStorage : storage) =
   lOps
 
 let%entry abortContract (iParam : unit) iStorage =
-  (* Filter ******************************************)
+  (* Pre condition(s) ******************************************)
   isTransferringPenaltyOrCreated iStorage;
-  (* *************************************************)
+  (* ***********************************************************)
   (transferBack iStorage, setState gAborted iStorage)
 
 (* ************************************************************************************
@@ -164,9 +166,9 @@ let%entry abortContract (iParam : unit) iStorage =
    ************************************************************************************)
 
 let%entry confirmContract (iParam : unit) iStorage =
-  (* Filter ******************************************)
+  (* Pre condition(s) ******************************************)
   isCreated iStorage;
-  (* *************************************************)
+  (* ***********************************************************)
   let lBalance = Current.balance () in
   let lTotal = iStorage.mIncentive + iStorage.mQuantity + iStorage.mPenalty in
   if lBalance > lTotal
@@ -204,10 +206,10 @@ let transferAmounts (iStorage : storage) =
    ************************************************************************************)
 
 let%entry transferPayment (iParam : unit) iStorage =
-  (* Filter ******************************************)
+  (* Pre condition(s) ******************************************)
   isConfirmed iStorage;
   isBuyer iStorage;
-  (* *************************************************)
+  (* ***********************************************************)
   (transferAmounts iStorage, setState "Succeeded" iStorage)
 
 (* ************************************************************************************
@@ -219,10 +221,10 @@ let%entry transferPayment (iParam : unit) iStorage =
  - tez quantity
  - nonce *)
 let%entry receivePayment (iParam : signature * nat) iStorage =
-  (* Filter ******************************************)
+  (* Pre condition(s) ******************************************)
   isConfirmed iStorage;
   isSeller iStorage;
-  (* *************************************************)
+  (* ***********************************************************)
   let lSig = iParam.(0) in
   let lNonce = iParam.(1) in
   let lContractAddr = Contract.address (Contract.self ()) in
