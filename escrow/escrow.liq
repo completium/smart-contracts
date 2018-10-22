@@ -225,11 +225,11 @@ let%entry receivePayment (iParam : signature * nat) iStorage =
   isConfirmed iStorage;
   isSeller iStorage;
   (* ***********************************************************)
-  let lSig = iParam.(0) in
+  let lSig   = iParam.(0) in
   let lNonce = iParam.(1) in
   let lContractAddr = Contract.address (Contract.self ()) in
   (* Shall we include buyer address in data ? *)
-  (* Shall we store used nonce ? (see double spend attack) *)
+  (* Shall we store used nonce ? (see double-spend attack) *)
   let lData = (lContractAddr, iStorage.mQuantity, lNonce) in
   let lHData = Crypto.blake2b (Bytes.pack lData) in
   if not (Crypto.check iStorage.mBuyerPKey lSig lHData)
