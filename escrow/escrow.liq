@@ -137,7 +137,7 @@ let%entry abortContract (iParam : unit) iStorage =
   then Current.failwith "Abortion is possible only in Created state."
   else
     let lOps = transferBack iStorage in
-    (gEmptyOp, setState "Aborted" iStorage)
+    (lOps, setState "Aborted" iStorage)
 
 (* ************************************************************************************
     Confirm contract
