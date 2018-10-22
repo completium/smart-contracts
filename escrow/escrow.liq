@@ -133,7 +133,7 @@ let transferBack (iStorage : storage) =
   lOps
 
 let%entry abortContract (iParam : unit) iStorage =
-  if not (isCreated iStorage.mState) || not (isTransferring iStorage.mState)
+  if not ((isCreated iStorage.mState) || (isTransferring iStorage.mState))
   then Current.failwith "Abortion is possible only in Created state."
   else
     let lOps = transferBack iStorage in
