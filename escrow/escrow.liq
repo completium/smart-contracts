@@ -125,17 +125,23 @@ let isBuyer (iStorage : storage) =
     Seller's penalty initialisation
    ************************************************************************************)
 
-let%entry transferPenalty (iParam : unit) iStorage =
-  (* Pre condition(s) ******************************************)
-  isTransferring iStorage;
-  isSeller iStorage;
-  (* ***********************************************************)
+(* asserts that amount of tez in call is equal to amount specified at
+   contract creation *)
+let checkPenalty (iStorage : storage) =
   let lAmount = Current.amount () in
   if lAmount > iStorage.mPenalty
   then failwith "Too much tez for penalty."
   else if lAmount < iStorage.mPenalty
   then failwith "Not enough tez for penalty."
-  else (gEmptyOp, setState gCreated iStorage)
+  else ()
+
+let%entry transferPenalty (iParam : unit) iStorage =
+  (* Pre condition(s) ******************************************)
+  isTransferring iStorage;
+  isSeller iStorage;
+  checkPenalty iStorage;
+  (* Actions ***************************************************)
+  (gEmptyOp, setState gCreated iStorage)
 
 (* ************************************************************************************
     Abort contract
@@ -158,24 +164,30 @@ let transferBack (iStorage : storage) =
 let%entry abortContract (iParam : unit) iStorage =
   (* Pre condition(s) ******************************************)
   isTransferringPenaltyOrCreated iStorage;
-  (* ***********************************************************)
+  (* Actions ***************************************************)
   (transferBack iStorage, setState gAborted iStorage)
 
 (* ************************************************************************************
     Confirm contract
    ************************************************************************************)
 
-let%entry confirmContract (iParam : unit) iStorage =
-  (* Pre condition(s) ******************************************)
-  isCreated iStorage;
-  (* ***********************************************************)
+(* Checks that total amount of tez owned by the contract is equal to amount
+   specified at contract creation *)
+let checkBalance (iStorage : storage) =
   let lBalance = Current.balance () in
   let lTotal = iStorage.mIncentive + iStorage.mQuantity + iStorage.mPenalty in
   if lBalance > lTotal
   then failwith "Too much tez sent to contract."
   else if lBalance < lTotal
   then failwith "Not enough tez sent to contract."
-  else (gEmptyOp, setState "Confirmed" iStorage)
+  else ()
+
+let%entry confirmContract (iParam : unit) iStorage =
+  (* Pre condition(s) ******************************************)
+  isCreated iStorage;
+  checkBalance iStorage;
+  (* Actions ***************************************************)
+  (gEmptyOp, setState "Confirmed" iStorage)
 
 (* ************************************************************************************
     Success payment operations
@@ -209,7 +221,7 @@ let%entry transferPayment (iParam : unit) iStorage =
   (* Pre condition(s) ******************************************)
   isConfirmed iStorage;
   isBuyer iStorage;
-  (* ***********************************************************)
+  (* Actions ***************************************************)
   (transferAmounts iStorage, setState "Succeeded" iStorage)
 
 (* ************************************************************************************
@@ -224,7 +236,8 @@ let%entry receivePayment (iParam : signature * nat) iStorage =
   (* Pre condition(s) ******************************************)
   isConfirmed iStorage;
   isSeller iStorage;
-  (* ***********************************************************)
+  (* checking signature;
+     TODO : figure out why below check code cannot be placed in function 'checkSig' *)
   let lSig   = iParam.(0) in
   let lNonce = iParam.(1) in
   let lContractAddr = Contract.address (Contract.self ()) in
@@ -234,5 +247,6 @@ let%entry receivePayment (iParam : signature * nat) iStorage =
   let lHData = Crypto.blake2b (Bytes.pack lData) in
   if not (Crypto.check iStorage.mBuyerPKey lSig lHData)
   then Current.failwith "Signature not checked."
-  else
-    (transferAmounts iStorage, setState "Succeeded" iStorage)
+  else ();
+  (* Actions ***************************************************)
+  (transferAmounts iStorage, setState "Succeeded" iStorage)
