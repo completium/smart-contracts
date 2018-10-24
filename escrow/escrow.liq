@@ -43,6 +43,7 @@ type storage = {
     mPenalty        : tez;                  (* seller's penalty *)
     mIncentive      : tez;                  (* buyer's penalty *)
     mState          : state;                (* contract's state *)
+    mDeadline       : timestamp option      (* can trigger failContract after deadline *)
   }
 
 let%init storage
@@ -52,7 +53,8 @@ let%init storage
       (iPenaltyTo : key_hash option)
       (iQuantity  : tez)
       (iPenalty   : tez)
-      (iIncentive : tez) =
+      (iIncentive : tez)
+      (iDeadline  : timestamp option) =
   (* iPenaltyTo's address is defaulted to buyer's address *)
   let lPenaltyTo =
     match iPenaltyTo with
@@ -73,6 +75,7 @@ let%init storage
     mPenalty        = iPenalty;
     mIncentive      = iIncentive;
     mState          = lState;
+    mDeadline       = iDeadline;
   }
 
 (* ************************************************************************************
@@ -82,26 +85,20 @@ let%init storage
 let isTransferring (iStorage : storage) =
   if iStorage.mState <> gTransferringPenalty
   then failwith "State should be 'TransferringPenalty'."
-  else ()
 
 let isCreated (iStorage : storage) =
   if iStorage.mState <> gCreated
   then Current.failwith "State should be 'Created'."
-  else ()
 
 let isConfirmed (iStorage : storage) =
   if iStorage.mState <> gConfirmed
   then Current.failwith "State should be 'Confirmed'."
-  else ()
 
 let isTransferringPenaltyOrCreated (iStorage : storage) =
   if not (iStorage.mState <> gCreated || (iStorage.mState <> gTransferringPenalty))
   then Current.failwith "State should be 'TransferringPenalty' or 'Created'."
-  else ()
 
-let setState (iState : state) (iStorage : storage) =
-  let lStorage = iStorage.mState <- iState in
-  lStorage
+let setState ((iState : state), (iStorage : storage)) = iStorage.mState <- iState
 
 (* ************************************************************************************
     Roles checking
@@ -112,14 +109,12 @@ let isSeller (iStorage : storage) =
   let lSeller = keyh_to_addr iStorage.mSeller in
   if lSender <> lSeller
   then Current.failwith "Can only be called by seller."
-  else ()
 
 let isBuyer (iStorage : storage) =
   let lSender = Current.sender () in
   let lBuyer = keyh_to_addr iStorage.mBuyer in
   if lSender <> lBuyer
   then Current.failwith "Can only be called by buyer."
-  else ()
 
 (* ************************************************************************************
     Seller's penalty initialisation
@@ -133,7 +128,6 @@ let checkPenalty (iStorage : storage) =
   then failwith "Too much tez for penalty."
   else if lAmount < iStorage.mPenalty
   then failwith "Not enough tez for penalty."
-  else ()
 
 let%entry transferPenalty (iParam : unit) iStorage =
   (* Pre condition(s) ******************************************)
@@ -141,7 +135,7 @@ let%entry transferPenalty (iParam : unit) iStorage =
   isSeller iStorage;
   checkPenalty iStorage;
   (* Actions ***************************************************)
-  (gEmptyOp, setState gCreated iStorage)
+  (gEmptyOp, setState (gCreated, iStorage))
 
 (* ************************************************************************************
     Abort contract
@@ -152,12 +146,12 @@ let transferBack (iStorage : storage) =
   let lBuyer = Account.default iStorage.mBuyer in
   let lTotal = iStorage.mQuantity + iStorage.mIncentive in
   let lOps = [Contract.transfer ~dest:lBuyer ~amount:lTotal] in
-  (* transfer penalty to penalty recipient *)
+  (* transfer penalty back to seller *)
   let lOps =
     if iStorage.mPenalty > 0tz
     then
-      let lPenaltyTo = Account.default iStorage.mSeller in
-      (Contract.transfer ~dest:lPenaltyTo ~amount:(iStorage.mPenalty))::lOps
+      let lSeller = Account.default iStorage.mSeller in
+      (Contract.transfer ~dest:lSeller ~amount:(iStorage.mPenalty))::lOps
     else lOps in
   lOps
 
@@ -165,7 +159,7 @@ let%entry abortContract (iParam : unit) iStorage =
   (* Pre condition(s) ******************************************)
   isTransferringPenaltyOrCreated iStorage;
   (* Actions ***************************************************)
-  (transferBack iStorage, setState gAborted iStorage)
+  (transferBack iStorage, setState (gAborted, iStorage))
 
 (* ************************************************************************************
     Confirm contract
@@ -185,25 +179,20 @@ let checkBalance (iStorage : storage) =
 let%entry confirmContract (iParam : unit) iStorage =
   (* Pre condition(s) ******************************************)
   isCreated iStorage;
+  isSeller iStorage;
   checkBalance iStorage;
   (* Actions ***************************************************)
-  (gEmptyOp, setState "Confirmed" iStorage)
+  (gEmptyOp, setState (gConfirmed, iStorage))
 
 (* ************************************************************************************
     Success payment operations
    ************************************************************************************)
 
 let transferAmounts (iStorage : storage) =
-  (* transfer quantity to seller *)
+  (* transfer quantity and penalty to seller *)
   let lSeller = Account.default iStorage.mSeller in
-  let lOps = [Contract.transfer ~dest:lSeller ~amount:(iStorage.mQuantity)] in
-  (* transfer penalty to penalty recipient *)
-  let lOps =
-    if iStorage.mPenalty > 0tz
-    then
-      let lPenaltyTo = Account.default iStorage.mPenaltyTo in
-      (Contract.transfer ~dest:lPenaltyTo ~amount:(iStorage.mPenalty))::lOps
-    else lOps in
+  let lAmount = iStorage.mQuantity + iStorage.mPenalty in
+  let lOps = [Contract.transfer ~dest:lSeller ~amount:lAmount] in
   (* transfer incentive back to buyer *)
   let lOps =
     if iStorage.mIncentive > 0tz
@@ -222,22 +211,13 @@ let%entry transferPayment (iParam : unit) iStorage =
   isConfirmed iStorage;
   isBuyer iStorage;
   (* Actions ***************************************************)
-  (transferAmounts iStorage, setState "Succeeded" iStorage)
+  (transferAmounts iStorage, setState (gSucceeded, iStorage))
 
 (* ************************************************************************************
     Receive payment
    ************************************************************************************)
 
-(* checkSignature makes data from:
- - contract's address
- - tez quantity
- - nonce *)
-let%entry receivePayment (iParam : signature * nat) iStorage =
-  (* Pre condition(s) ******************************************)
-  isConfirmed iStorage;
-  isSeller iStorage;
-  (* checking signature;
-     TODO : figure out why below check code cannot be placed in function 'checkSig' *)
+let checkSignature ((iParam : signature * nat), (iStorage : storage)) =
   let lSig   = iParam.(0) in
   let lNonce = iParam.(1) in
   let lContractAddr = Contract.address (Contract.self ()) in
@@ -247,6 +227,48 @@ let%entry receivePayment (iParam : signature * nat) iStorage =
   let lHData = Crypto.blake2b (Bytes.pack lData) in
   if not (Crypto.check iStorage.mBuyerPKey lSig lHData)
   then Current.failwith "Signature not checked."
-  else ();
+
+(* checkSignature makes data from:
+ - contract's address
+ - tez quantity
+ - nonce *)
+let%entry receivePayment (iParam : signature * nat) iStorage =
+  (* Pre condition(s) ******************************************)
+  isConfirmed iStorage;
+  isSeller iStorage;
+  checkSignature (iParam, iStorage);
   (* Actions ***************************************************)
-  (transferAmounts iStorage, setState "Succeeded" iStorage)
+  (transferAmounts iStorage, setState (gSucceeded, iStorage))
+
+(* ************************************************************************************
+    Fail contract
+   ************************************************************************************)
+
+let isAfterDeadline (iStorage : storage) =
+  match iStorage.mDeadline with
+  | Some t ->
+     if Current.time () < t
+     then failwith "Cannot fail before deadline."
+  | None -> ()
+
+let transferFailedAmounts (iStorage : storage) =
+  (* transfer quantity back to buyer *)
+  let lBuyer = Account.default iStorage.mBuyer in
+  let lTotal = iStorage.mQuantity + iStorage.mIncentive in
+  let lOps = [Contract.transfer ~dest:lBuyer ~amount:lTotal] in
+  (* transfer penalty to penaltyTo address *)
+  let lOps =
+    if iStorage.mPenalty > 0tz
+    then
+      let lPenaltyTo = Account.default iStorage.mPenaltyTo in
+      (Contract.transfer ~dest:lPenaltyTo ~amount:(iStorage.mPenalty))::lOps
+    else lOps in
+  lOps
+
+let%entry failContract (iParam : unit) iStorage =
+  (* Pre condition(s) ******************************************)
+  isConfirmed iStorage;
+  isBuyer iStorage;
+  isAfterDeadline iStorage;
+  (* Actions ***************************************************)
+  (transferFailedAmounts iStorage, setState (gFailed, iStorage))
