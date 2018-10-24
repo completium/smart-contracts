@@ -12,38 +12,24 @@ let[@inline] keyh_to_addr (iKeyh : key_hash) = Contract.address (Account.default
     Storage
    ************************************************************************************)
 
-(*type state =
+type state =
   | TransferringPenalty                     (* waiting for penalty transfer from seller *)
-  | Created                                 (* initial state *)
-  | Confirmed                               (* confirmed, cannot be aborted *)
+  | Created                                 (* initial state                            *)
+  | Confirmed                               (* confirmed, cannot be aborted             *)
   | Aborted                                 (* transaction aborted before confirmation  *)
-  | Succeeded                               (* quantity transferred to seller *)
+  | Succeeded                               (* quantity transferred to seller           *)
   | Failed                                  (* quantity returned to buyer, penalty lost *)
 
-type penalty_to_state =
-  | PTTransferred                           (* penalty recipient is set*)
-  | PTTransferring                          (* penalty recipeint awaits confirmation *)
- *)
-
-let[@inline] gCreated              = "Created"
-let[@inline] gTransferringPenalty  = "TransferringPenalty"
-let[@inline] gConfirmed            = "Confirmed"
-let[@inline] gAborted              = "Aborted"
-let[@inline] gSucceeded            = "Succeeded"
-let[@inline] gFailed               = "Failed"
-
-type state = string
-
 type storage = {
-    mBuyer          : key_hash;             (* transfer quantity from *)
-    mBuyerPKey      : key;                  (* buyer's key *)
-    mSeller         : key_hash;             (* transfer quantity to *)
-    mPenaltyTo      : key_hash;             (* tranfer penalty to; defaulted to buyer *)
-    mQuantity       : tez;                  (* exchanged quantity *)
-    mPenalty        : tez;                  (* seller's penalty *)
-    mIncentive      : tez;                  (* buyer's penalty *)
-    mState          : state;                (* contract's state *)
-    mDeadline       : timestamp option      (* can trigger failContract after deadline *)
+    mBuyer          : key_hash;             (* transfer quantity from                   *)
+    mBuyerPKey      : key;                  (* buyer's key                              *)
+    mSeller         : key_hash;             (* transfer quantity to                     *)
+    mPenaltyTo      : key_hash;             (* tranfer penalty to; defaulted to buyer   *)
+    mQuantity       : tez;                  (* exchanged quantity                       *)
+    mPenalty        : tez;                  (* seller's penalty                         *)
+    mIncentive      : tez;                  (* buyer's penalty                          *)
+    mState          : state;                (* contract's state                         *)
+    mDeadline       : timestamp option      (* can trigger failContract after deadline  *)
   }
 
 let%init storage
@@ -63,8 +49,8 @@ let%init storage
   in
   let lState =
     if iPenalty = 0tz
-    then "Created"
-    else "TransferringPenalty"
+    then Created
+    else TransferringPenalty
   in
   {
     mBuyer          = iBuyer;
@@ -83,20 +69,25 @@ let%init storage
    ************************************************************************************)
 
 let isTransferring (iStorage : storage) =
-  if iStorage.mState <> gTransferringPenalty
-  then failwith "State should be 'TransferringPenalty'."
+  match iStorage.mState with
+  | TransferringPenalty -> ()
+  | _ -> Current.failwith "State should be 'TransferringPenalty'."
 
 let isCreated (iStorage : storage) =
-  if iStorage.mState <> gCreated
-  then Current.failwith "State should be 'Created'."
+  match iStorage.mState with
+  | Created -> ()
+  | _ -> Current.failwith "State should be 'Created'."
 
 let isConfirmed (iStorage : storage) =
-  if iStorage.mState <> gConfirmed
-  then Current.failwith "State should be 'Confirmed'."
+  match iStorage.mState with
+  | Confirmed -> ()
+  | _ -> Current.failwith "State should be 'Confirmed'."
 
 let isTransferringPenaltyOrCreated (iStorage : storage) =
-  if not (iStorage.mState <> gCreated || (iStorage.mState <> gTransferringPenalty))
-  then Current.failwith "State should be 'TransferringPenalty' or 'Created'."
+  match iStorage.mState with
+  | TransferringPenalty -> ()
+  | Created             -> ()
+  | _ -> Current.failwith "State should be 'TransferringPenalty' or 'Created'."
 
 let setState ((iState : state), (iStorage : storage)) = iStorage.mState <- iState
 
@@ -127,7 +118,7 @@ let checkPenalty (iStorage : storage) =
   if lAmount > iStorage.mPenalty
   then failwith "Too much tez for penalty."
   else if lAmount < iStorage.mPenalty
-  then failwith "Not enough tez for penalty."
+       then failwith "Not enough tez for penalty."
 
 let%entry transferPenalty (iParam : unit) iStorage =
   (* Pre condition(s) ******************************************)
@@ -135,7 +126,7 @@ let%entry transferPenalty (iParam : unit) iStorage =
   isSeller iStorage;
   checkPenalty iStorage;
   (* Actions ***************************************************)
-  (gEmptyOp, setState (gCreated, iStorage))
+  (gEmptyOp, setState (Created, iStorage))
 
 (* ************************************************************************************
     Abort contract
@@ -159,7 +150,7 @@ let%entry abortContract (iParam : unit) iStorage =
   (* Pre condition(s) ******************************************)
   isTransferringPenaltyOrCreated iStorage;
   (* Actions ***************************************************)
-  (transferBack iStorage, setState (gAborted, iStorage))
+  (transferBack iStorage, setState (Aborted, iStorage))
 
 (* ************************************************************************************
     Confirm contract
@@ -182,7 +173,7 @@ let%entry confirmContract (iParam : unit) iStorage =
   isSeller iStorage;
   checkBalance iStorage;
   (* Actions ***************************************************)
-  (gEmptyOp, setState (gConfirmed, iStorage))
+  (gEmptyOp, setState (Confirmed, iStorage))
 
 (* ************************************************************************************
     Success payment operations
@@ -211,7 +202,7 @@ let%entry transferPayment (iParam : unit) iStorage =
   isConfirmed iStorage;
   isBuyer iStorage;
   (* Actions ***************************************************)
-  (transferAmounts iStorage, setState (gSucceeded, iStorage))
+  (transferAmounts iStorage, setState (Succeeded, iStorage))
 
 (* ************************************************************************************
     Receive payment
@@ -238,7 +229,7 @@ let%entry receivePayment (iParam : signature * nat) iStorage =
   isSeller iStorage;
   checkSignature (iParam, iStorage);
   (* Actions ***************************************************)
-  (transferAmounts iStorage, setState (gSucceeded, iStorage))
+  (transferAmounts iStorage, setState (Succeeded, iStorage))
 
 (* ************************************************************************************
     Fail contract
@@ -271,4 +262,4 @@ let%entry failContract (iParam : unit) iStorage =
   isBuyer iStorage;
   isAfterDeadline iStorage;
   (* Actions ***************************************************)
-  (transferFailedAmounts iStorage, setState (gFailed, iStorage))
+  (transferFailedAmounts iStorage, setState (Failed, iStorage))
