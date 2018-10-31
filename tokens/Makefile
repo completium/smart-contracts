@@ -12,6 +12,10 @@ typecheck: $(OUT)
 
 all: $(OUT) typecheck
 
+erc721: erc721.liq
+	$(LIQUIDITY) erc721.liq
+	$(TEZOS_CLIENT) typecheck script erc721.liq.tz
+
 clean:
 	rm -fr *.tz
 	rm -fr *~ \#*
