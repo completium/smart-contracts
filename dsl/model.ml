@@ -27,9 +27,9 @@ type model = cmd list
  ************************************************************************************)
 
 let dump_type = function
-  | Uint   -> "uint"
-  | String -> "string"
-  | Date   -> "date"
+  | Uint   [@id 1] -> "uint"
+  | String [@id 2] -> "string"
+  | Date   [@id 3] -> "date"
 
 let dump_field (id,ft) =
   match ft with
