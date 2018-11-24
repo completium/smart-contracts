@@ -51,7 +51,7 @@ let empty = []
  ***********************************************************************************)
 
 (* kind of bind *)
-let (>>=) (m : model) (d : cmd) : model = m @ [ d ]
+let (>>) (m : model) (d : cmd) : model = m @ [ d ]
 
 let constant id typ = Const (id, typ)
 let asset id fds = Asset (id, fds)
@@ -63,12 +63,24 @@ let field_ref id typ = (id, Ref typ)
   test
  ***********************************************************************************)
 
+(**
+   constant symbol of string
+
+   constant name of string
+
+   constant total of uint
+
+   asset tokenHolder {
+      holder  : account ref;
+      balance : uint;
+   }
+ *)
 let _ =
   let m =
-    empty >>=
-      constant "symbol" String >>=
-      constant "name"   String >>=
-      constant "total"  Uint >>=
+    empty >>
+      constant "symbol" String >>
+      constant "name"   String >>
+      constant "total"  Uint >>
       asset "tokenHolder" [
           field_ref "holder" "account";
           field     "balance" Uint
