@@ -63,6 +63,23 @@ let field_ref id typ = (id, Ref typ)
   test
  ***********************************************************************************)
 
+(* built-in *)
+type uint = int
+
+type account
+
+(* smart contract specification *)
+module type [@smartcontract] Escrow = sig
+  val [@constant] symbol : string
+  val [@constant] name   : string
+  val [@constant] total  : uint
+
+  type [@asset] tokenHolder = {
+      holder  : account ref;
+      balance : uint;
+    }
+end
+
 (**
    constant symbol of string
 
@@ -76,6 +93,7 @@ let field_ref id typ = (id, Ref typ)
    }
  *)
 let _ =
+  (* TODO : implement extension let%model m = ... as let m = empty >> ... *)
   let m =
     empty >>
       constant "symbol" String >>
