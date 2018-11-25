@@ -70,14 +70,23 @@ type account
 
 (* smart contract specification *)
 module type [@smartcontract] Escrow = sig
+
   val [@constant] symbol : string
+
   val [@constant] name   : string
+
   val [@constant] total  : uint
 
   type [@asset] tokenHolder = {
       holder  : account ref;
       balance : uint;
     }
+
+  type [@transaction] transfer = {
+      amount   : uint;
+      toHolder : account ref;
+    }
+
 end
 
 (**
