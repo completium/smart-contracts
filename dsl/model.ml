@@ -87,6 +87,15 @@ module type [@smartcontract] Escrow = sig
       toHolder : account ref;
     }
 
+  type [@sm] states =
+    | Created [@initial]
+    | Aborted
+    | Confirmed
+    | Failed
+    | Transfered
+
+  type [@transition Created Aborted] abort
+
 end
 
 (**
