@@ -12,25 +12,6 @@ type basic_type =
 
 type ident = string
 
-(* state machine ********************************************************************)
-
-type state_typ = SInitial | SBasic | STerminal
-
-type state = ident * state_typ
-
-type transition = {
-    mFromState : ident;
-    mToState   : ident;
-    (* add roles; conditions; actions; ... *)
-  }
-
-type state_machine = {
-    mStates      : state list;
-    mTransitions : transition list
-  }
-
-let empty_machine = { mStates = []; mTransitions = []; }
-
 (* struct ****************************************************************************)
 
 type field_type =
@@ -38,6 +19,29 @@ type field_type =
   | Ref   of ident
 
 type field = ident * field_type
+
+(* state machine ********************************************************************)
+
+type state_typ = SInitial | SBasic | STerminal
+
+type state = ident * state_typ
+
+type transition = {
+    mId        : ident;
+    mFromState : ident;
+    mToState   : ident;
+    (* add roles; conditions; actions; ... *)
+  }
+
+let empty_transition = { mId = ""; mFromState = ""; mToState = ""; }
+
+type state_machine = {
+    mStates      : state list;
+    mTransitions : transition list;
+    mArgs        : field list;
+  }
+
+let empty_machine = { mStates = []; mTransitions = []; mArgs = []; }
 
 (* entity and model ******************************************************************)
 
@@ -66,12 +70,30 @@ let dump_field (id,ft) =
 
 let dump_fields fs = String.concat "\n\t" (List.map dump_field fs)
 
-let dump_cmd = function
+let dump_statety = function
+  | SBasic -> ""
+  | STerminal -> "terminal"
+  | SInitial -> "initial"
+
+let dump_state (s,st) = s^"\t"^(dump_statety st)
+
+let dump_transition tr =
+  "  transition "^(tr.mId)^" from "^(tr.mFromState)^" to "^(tr.mToState)
+
+
+let dump_machine m =
+  "\n  states\n\t | "
+  ^(String.concat "\n\t | " (List.map dump_state m.mStates))
+  ^"\n\n"
+  ^(String.concat "\n\n" (List.map dump_transition m.mTransitions))
+  ^"\n"
+
+let dump_entity = function
   | Const (id,t)  -> "constant "^id^" of "^(dump_type t)
   | Asset (id,fs) -> "asset "^id^" {\n\t"^(dump_fields fs)^"\n}"
-  | _ -> "not implemented"
+  | Machine (id,m) -> "machine "^id^" {\n\t"^(dump_machine m)^"\n}"
 
-let dump_model m = String.concat "\n\n" (List.map dump_cmd m)
+let dump_model m = String.concat "\n\n" (List.map dump_entity m)
 
 let empty = []
 
@@ -92,6 +114,19 @@ let mk_field_ref id typ = (id, Ref typ)
 
 let mk_state_machine id states =
   fun m -> m @ [ Machine (id, { empty_machine with mStates = states; })]
+
+let mk_transition smid trid tr =
+  List.map (fun e ->
+      match e with
+      | Machine (id,m) when compare id smid = 0 ->
+         Machine (
+             id,
+             { m with
+               mTransitions = m.mTransitions @ [ { tr with mId = trid } ]
+             }
+           )
+      | _ -> e
+    )
 
 (***********************************************************************************
   test
@@ -166,10 +201,10 @@ let _ =
           "Confirmed",  SBasic;
           "Failed",     STerminal;
           "Transfered", STerminal;
-        ] (* >>
-             use extension to rm "default_transition with" ...
+        ] >>
+      (* use extension to rm "default_transition with" ... *)
       mk_transition "sm" "abort" { empty_transition with
           mFromState = "Created";
           mToState   = "Aborted";
-        } **) in
+        } in
   print_endline (dump_model m)
