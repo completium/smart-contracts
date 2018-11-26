@@ -12,13 +12,13 @@ type basic_type =
 
 type ident = string
 
-(* state machine *)
+(* state machine ********************************************************************)
+
 type state_typ = SInitial | SBasic | STerminal
 
 type state = ident * state_typ
 
 type transition = {
-    mId        : ident;
     mFromState : state;
     mToState   : state;
     (* add roles; conditions; actions; ... *)
@@ -29,16 +29,22 @@ type state_machine = {
     mTransitions : transition list
   }
 
+let empty_machine = { mStates = []; mTransitions = []; }
+
+(* struct ****************************************************************************)
+
 type field_type =
   | Basic of basic_type
   | Ref   of ident
 
 type field = ident * field_type
 
+(* entity and model ******************************************************************)
+
 type entity =
-  | Const of ident * basic_type
-  | Asset of ident * field list
-  | Machine of state_machine
+  | Const    of ident * basic_type
+  | Asset    of ident * field list
+  | Machine  of ident * state_machine
 
 type model = entity list
 
@@ -76,14 +82,15 @@ let empty = []
 (* kind of bind ... *)
 let (>>) (m : model) (d : entity) : model = m @ [ d ]
 
-let constant id typ = Const (id, typ)
+let mk_cons id typ = Const (id, typ)
 
-let asset id fds = Asset (id, fds)
+let mk_asset id fds = Asset (id, fds)
 
-let field id typ = (id, Basic typ)
+let mk_field id typ = (id, Basic typ)
 
-let field_ref id typ = (id, Ref typ)
+let mk_field_ref id typ = (id, Ref typ)
 
+let mk_state_machine id states = (id, { empty_machine with mStates = states; })
 
 (***********************************************************************************
   test
@@ -145,11 +152,11 @@ let _ =
   (* TODO : implement extension let%model m = ... as let m = empty >> ... *)
   let m =
     empty >>
-      constant "symbol" String >>
-      constant "name"   String >>
-      constant "total"  Uint >>
-      asset "tokenHolder" [
-          field_ref "holder" "account";
-          field     "balance" Uint
+      mk_cons "symbol" String >>
+      mk_cons "name"   String >>
+      mk_cons "total"  Uint >>
+      mk_asset "tokenHolder" [
+          mk_field_ref "holder" "account";
+          mk_field     "balance" Uint
         ] in
   print_endline (dump_model m)
