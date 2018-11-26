@@ -8,7 +8,23 @@ type mtype =
   | String
   | Date
 
-type state = string
+
+(* state machine *)
+type state_typ = SInitial | SBasic | STerminal
+
+type state = string * state_typ
+
+type transition = {
+    mId : string;
+    mFromState : state;
+    mToState : state;
+    (* add roles; conditions; actions; ... *)
+  }
+
+type state_machine = {
+    mStates : state list;
+    mTransitions : transition list
+  }
 
 type ident = string
 
@@ -18,11 +34,12 @@ type field_type =
 
 type field = ident * field_type
 
-type cmd =
+type entity =
   | Const of ident * mtype
   | Asset of ident * field list
+  | Machine of state_machine
 
-type model = cmd list
+type model = entity list
 
 (************************************************************************************
   Dump model
@@ -43,6 +60,7 @@ let dump_fields fs = String.concat "\n\t" (List.map dump_field fs)
 let dump_cmd = function
   | Const (id,t)  -> "constant "^id^" of "^(dump_type t)
   | Asset (id,fs) -> "asset "^id^" {\n\t"^(dump_fields fs)^"\n}"
+  | _ -> "not implemented"
 
 let dump_model m = String.concat "\n\n" (List.map dump_cmd m)
 
@@ -53,7 +71,7 @@ let empty = []
  ***********************************************************************************)
 
 (* kind of bind *)
-let (>>) (m : model) (d : cmd) : model = m @ [ d ]
+let (>>) (m : model) (d : entity) : model = m @ [ d ]
 
 let constant id typ = Const (id, typ)
 let asset id fds = Asset (id, fds)
@@ -90,18 +108,18 @@ module type [@smartcontract] Escrow = sig
     }
 
   type [@sm] states =
-    | Created [@initial]
-    | Aborted
+    | Created    [@initial]
+    | Aborted    [@terminal]
     | Confirmed
-    | Failed
-    | Transfered
+    | Failed     [@terminal]
+    | Transfered [@terminal]
 
   (* How to pass properties to transaction ? *)
-  type [@transition {
-             fromState = Created;
-             toState   = Aborted;
-             roles     = ANY;
-       }] abort
+  type [@transition
+           fromState = Created;
+        toState   = Aborted;
+        roles     = ANY;
+       ] abort
 
 end
 
