@@ -8,6 +8,8 @@ type mtype =
   | String
   | Date
 
+type state = string
+
 type ident = string
 
 type field_type =
@@ -71,11 +73,11 @@ type account
 (* smart contract specification *)
 module type [@smartcontract] Escrow = sig
 
-  val [@constant] symbol : string
+  val symbol : string
 
-  val [@constant] name   : string
+  val name   : string
 
-  val [@constant] total  : uint
+  val total  : uint
 
   type [@asset] tokenHolder = {
       holder  : account ref;
@@ -94,7 +96,12 @@ module type [@smartcontract] Escrow = sig
     | Failed
     | Transfered
 
-  type [@transition Created Aborted] abort
+  (* How to pass properties to transaction ? *)
+  type [@transition {
+             fromState = Created;
+             toState   = Aborted;
+             roles     = ANY;
+       }] abort
 
 end
 
