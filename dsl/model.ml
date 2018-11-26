@@ -3,39 +3,40 @@
   model type
  ************************************************************************************)
 
-type mtype =
+type basic_type =
   | Uint
   | String
+  | Double
   | Date
+  | Tez
 
+type ident = string
 
 (* state machine *)
 type state_typ = SInitial | SBasic | STerminal
 
-type state = string * state_typ
+type state = ident * state_typ
 
 type transition = {
-    mId : string;
+    mId        : ident;
     mFromState : state;
-    mToState : state;
+    mToState   : state;
     (* add roles; conditions; actions; ... *)
   }
 
 type state_machine = {
-    mStates : state list;
+    mStates      : state list;
     mTransitions : transition list
   }
 
-type ident = string
-
 type field_type =
-  | Basic of mtype
+  | Basic of basic_type
   | Ref   of ident
 
 type field = ident * field_type
 
 type entity =
-  | Const of ident * mtype
+  | Const of ident * basic_type
   | Asset of ident * field list
   | Machine of state_machine
 
@@ -46,9 +47,11 @@ type model = entity list
  ************************************************************************************)
 
 let dump_type = function
-  | Uint   [@id 1] -> "uint"
-  | String [@id 2] -> "string"
-  | Date   [@id 3] -> "date"
+  | Uint   -> "uint"
+  | String -> "string"
+  | Double -> "double"
+  | Date   -> "date"
+  | Tez    -> "tez"
 
 let dump_field (id,ft) =
   match ft with
@@ -67,15 +70,18 @@ let dump_model m = String.concat "\n\n" (List.map dump_cmd m)
 let empty = []
 
 (***********************************************************************************
-  Constructors
+  Helpers
  ***********************************************************************************)
 
-(* kind of bind *)
+(* kind of bind ... *)
 let (>>) (m : model) (d : entity) : model = m @ [ d ]
 
 let constant id typ = Const (id, typ)
+
 let asset id fds = Asset (id, fds)
+
 let field id typ = (id, Basic typ)
+
 let field_ref id typ = (id, Ref typ)
 
 
@@ -116,7 +122,7 @@ module type [@smartcontract] Escrow = sig
 
   (* How to pass properties to transaction ? *)
   type [@transition
-           fromState = Created;
+        fromState = Created;
         toState   = Aborted;
         roles     = ANY;
        ] abort
