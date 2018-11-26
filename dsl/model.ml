@@ -19,8 +19,8 @@ type state_typ = SInitial | SBasic | STerminal
 type state = ident * state_typ
 
 type transition = {
-    mFromState : state;
-    mToState   : state;
+    mFromState : ident;
+    mToState   : ident;
     (* add roles; conditions; actions; ... *)
   }
 
@@ -80,17 +80,18 @@ let empty = []
  ***********************************************************************************)
 
 (* kind of bind ... *)
-let (>>) (m : model) (d : entity) : model = m @ [ d ]
+let (>>) (m : model) (f : model -> model) : model = f m
 
-let mk_cons id typ = Const (id, typ)
+let mk_cons id typ = fun m -> m @ [Const (id, typ)]
 
-let mk_asset id fds = Asset (id, fds)
+let mk_asset id fds = fun m -> m @ [Asset (id, fds)]
 
 let mk_field id typ = (id, Basic typ)
 
 let mk_field_ref id typ = (id, Ref typ)
 
-let mk_state_machine id states = (id, { empty_machine with mStates = states; })
+let mk_state_machine id states =
+  fun m -> m @ [ Machine (id, { empty_machine with mStates = states; })]
 
 (***********************************************************************************
   test
@@ -158,5 +159,17 @@ let _ =
       mk_asset "tokenHolder" [
           mk_field_ref "holder" "account";
           mk_field     "balance" Uint
-        ] in
+        ] >>
+      mk_state_machine "sm" [
+          "Created",    SInitial;
+          "Aborted",    STerminal;
+          "Confirmed",  SBasic;
+          "Failed",     STerminal;
+          "Transfered", STerminal;
+        ] (* >>
+             use extension to rm "default_transition with" ...
+      mk_transition "sm" "abort" { empty_transition with
+          mFromState = "Created";
+          mToState   = "Aborted";
+        } **) in
   print_endline (dump_model m)
