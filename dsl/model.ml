@@ -89,13 +89,52 @@ type model = ident * entity list
   Dump model
  ************************************************************************************)
 
+type dump_typ =
+  | Struct
+  | Enum
+  | Signature
+
+type pojo = {
+    mDtyp    :  dump_typ;
+    mTyp     :  string;
+    mId      :  string;
+    mExtra   :  string;
+    mPojos   :  pojo list;
+    mFields  :  (string * string * string) list;    (* id type extra *)
+  }
+
+let empty_pojo = {
+    mDtyp = Struct;
+    mTyp = ""; mId = ""; mExtra = ""; mPojos = []; mFields = [];
+  }
+
 let dump_type = function
-  | Uint   -> "uint"
-  | String -> "string"
-  | Double -> "double"
-  | Address -> "address"
-  | Date   -> "date"
-  | Tez    -> "tez"
+  | Uint     -> "uint"
+  | String   -> "string"
+  | Double   -> "double"
+  | Address  -> "address"
+  | Date     -> "date"
+  | Tez      -> "tez"
+
+let dump_trpol = function
+  | Direct   -> "direct"
+  | Indirect -> "indirect"
+
+let rec model_to_pojos (mid, e) =
+  {
+    mDtyp   = Struct;
+    mTyp    = "model";
+    mId     = mid;
+    mExtra  = "";
+    mPojos  = entities_to_pojos e;
+    mFields = [];
+  }
+and entities_to_pojos =
+  List.map (fun e ->
+      match e with
+      | Const (id,typ) -> { empty_pojo with mTyp = "cons"; mId = id; mExtra = (dump_type typ) }
+      | _ -> empty_pojo
+    )
 
 let dump_field (id,ft) =
   match ft with
@@ -119,7 +158,7 @@ let dump_statety = function
 
 let dump_state (s,st) = s^"\t"^(dump_statety st)
 
-let dump_transition tr =
+let dump_transition (tr:transition) =
   "   transition "^(tr.mId)^" from "^(tr.mFromState)^" to "^(tr.mToState)
 
 let dump_machine m =
@@ -128,10 +167,6 @@ let dump_machine m =
   ^"\n\n"
   ^(String.concat "\n\n" (List.map dump_transition m.mTransitions))
   ^"\n"
-
-let dump_trpol = function
-  | Direct   -> "direct"
-  | Indirect -> "indirect"
 
 let dump_trd trd =
   trd.mAsset^" "^trd.mFrom^" "^trd.mTo^" "^trd.mField^" "
