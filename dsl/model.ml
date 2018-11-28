@@ -28,6 +28,28 @@ type arg_type =
 
 type arg   = ident * arg_type
 
+(* transfer *************************************************************************)
+
+type transfer_policy =
+  | Direct
+  | Indirect
+
+type transfer_data = {
+    mAsset  : ident;
+    mFrom   : ident;
+    mTo     : ident;
+    mField  : ident;
+    mPolicy : transfer_policy;
+  }
+
+(* transaction data *****************************************************************)
+
+type tx_data = {
+    mRoles : ident list;
+  }
+
+let empty_txd = { mRoles = [] }
+
 (* state machine ********************************************************************)
 
 type state_typ = SInitial | SBasic | STerminal
@@ -35,13 +57,13 @@ type state_typ = SInitial | SBasic | STerminal
 type state = ident * state_typ
 
 type transition = {
-    mId        : ident;
-    mFromState : ident;
-    mToState   : ident;
-    (* add roles; conditions; actions; ... *)
+    mId          : ident;
+    mFromState   : ident;
+    mToState     : ident;
+    mTransaction : tx_data;
   }
 
-let empty_transition = { mId = ""; mFromState = ""; mToState = ""; }
+let empty_transition = { mId = ""; mFromState = ""; mToState = ""; mTransaction = empty_txd }
 
 type state_machine = {
     mStates      : state list;
@@ -57,9 +79,11 @@ type entity =
   | Const       of ident * basic_type
   | Asset       of ident * field list
   | Machine     of ident * state_machine
-  | Transaction of ident * arg list
+  | Transaction of ident * tx_data * arg list
+  | Transfer    of ident * transfer_data
+  | Role        of ident
 
-type model = entity list
+type model = ident * entity list
 
 (************************************************************************************
   Dump model
@@ -89,30 +113,42 @@ let dump_arg (id,arg) =
 let dump_args fs = String.concat "\n\t" (List.map dump_arg fs)
 
 let dump_statety = function
-  | SBasic -> ""
+  | SBasic    -> ""
   | STerminal -> "terminal"
-  | SInitial -> "initial"
+  | SInitial  -> "initial"
 
 let dump_state (s,st) = s^"\t"^(dump_statety st)
 
 let dump_transition tr =
-  "  transition "^(tr.mId)^" from "^(tr.mFromState)^" to "^(tr.mToState)
-
+  "   transition "^(tr.mId)^" from "^(tr.mFromState)^" to "^(tr.mToState)
 
 let dump_machine m =
-  "\n  states\n\t | "
+  "    states\n\t | "
   ^(String.concat "\n\t | " (List.map dump_state m.mStates))
   ^"\n\n"
   ^(String.concat "\n\n" (List.map dump_transition m.mTransitions))
   ^"\n"
 
-let dump_entity = function
-  | Const (id,t)  -> "constant "^id^" of "^(dump_type t)
-  | Asset (id,fs) -> "asset "^id^" {\n\t"^(dump_fields fs)^"\n}"
-  | Machine (id,m) -> "machine "^id^" {\n\t"^(dump_machine m)^"\n}"
-  | Transaction (id,fs) -> "transaction "^id^" {\n\t"^(dump_args fs)^"\n}"
+let dump_trpol = function
+  | Direct   -> "direct"
+  | Indirect -> "indirect"
 
-let dump_model m = String.concat "\n\n" (List.map dump_entity m)
+let dump_trd trd =
+  trd.mAsset^" "^trd.mFrom^" "^trd.mTo^" "^trd.mField^" "
+  ^(dump_trpol trd.mPolicy)
+
+let dump_entity = function
+  | Const (id,t)             -> "constant "   ^id^" of "  ^(dump_type t)
+  | Asset (id,fs)            -> "asset "      ^id^" {\n\t"^(dump_fields fs)^"\n  }"
+  | Machine (id,m)           -> "machine "    ^id^" {\n\n"^(dump_machine m)^"\n  }"
+  | Transaction (id,txd,fs)  -> "transaction "^id^" {\n\t"^(dump_args fs)  ^"\n  }"
+  | Transfer (id,trd)        -> "transfer "   ^id^" {\n\t"^(dump_trd trd)  ^"\n  }"
+  | Role id                  -> "role "       ^id
+
+let dump_model (id,m) =
+  "model "^id^" {\n\n  "
+  ^(String.concat "\n\n  " (List.map dump_entity m))
+  ^"\n}"
 
 let empty = []
 
@@ -123,25 +159,25 @@ let empty = []
 (* kind of bind ... *)
 let (>>) (m : model) (f : model -> model) : model = f m
 
-let mk_cons id typ = fun m -> m @ [Const (id, typ)]
+let cons ~id:id ~typ:typ = fun (mid,m) -> (mid,m @ [Const (id, typ)])
 
-let mk_asset id fds = fun m -> m @ [Asset (id, fds)]
+let asset ~id:id ~fields:fds = fun (mid,m) -> (mid,m @ [Asset (id, fds)])
 
-let mk_identifier id typ = (id, FIdentifier typ)
+let identifier ~id:id ~typ:typ = (id, FIdentifier typ)
 
-let mk_field id typ = (id, FBasic typ)
+let field ~id:id ~typ:typ = (id, FBasic typ)
 
-let mk_field_ref id typ = (id, FRef typ)
+let field_ref ~id:id ~typ:typ = (id, FRef typ)
 
-let mk_arg id typ = (id, ABasic typ)
+let arg ~id:id ~typ:typ = (id, ABasic typ)
 
-let mk_arg_ref id typ = (id, ARef typ)
+let arg_ref ~id:id ~typ:typ = (id, ARef typ)
 
-let mk_state_machine id states =
-  fun m -> m @ [ Machine (id, { empty_machine with mStates = states; })]
+let state_machine ~id:id ~states:states =
+  fun (mid,m) -> (mid, m @ [ Machine (id, { empty_machine with mStates = states; })])
 
-let mk_transition smid trid tr =
-  List.map (fun e ->
+let transition ~machine:smid ~id:trid ~args:tr = fun (mid, m) ->
+  (mid, List.map (fun e ->
       match e with
       | Machine (id,m) when compare id smid = 0 ->
          Machine (
@@ -151,9 +187,16 @@ let mk_transition smid trid tr =
              }
            )
       | _ -> e
-    )
+    ) m)
 
-let mk_transaction id fds = fun m -> m @ [Transaction (id, fds)]
+let transaction ~id:id ~args:fds = fun (mid,m) -> (mid, m @ [Transaction (id, empty_txd, fds)])
+
+let role ~id:id = fun (mid, m) -> (mid, m @ [Role id])
+
+let transfer ~id:id ~asset:a ~from:f ~tom:t ~field:fi ?policy:(p=Indirect) = fun (mid, m) ->
+  (mid, m @ [Transfer (id, { mAsset = a; mFrom = f; mTo = t; mField = fi; mPolicy = p; })] )
+
+let model ~name:id = (id, [])
 
 (***********************************************************************************
   test
@@ -161,34 +204,34 @@ let mk_transaction id fds = fun m -> m @ [Transaction (id, fds)]
 
 let _ =
   (* TODO : implement extension let%model m = ... as let m = empty >> ... *)
-  print_endline "\nERC20\n";
   let erc20_model =
-    empty >>
-      mk_cons "symbol" String >>
-      mk_cons "name"   String >>
-      mk_cons "total"  Uint >>
-      mk_asset "tokenHolder" [
-          mk_identifier   "holder"  Address;
-          mk_field        "balance" Uint;
-        ] >>
-      mk_transaction "transfer" [
-          mk_arg "toAddress"  Address;
-          mk_arg "nbTokens"   Uint;
+    model ~name:"ERC20"                                            >>
+      cons ~id:"symbol" ~typ:String                                >>
+      cons ~id:"name"   ~typ:String                                >>
+      cons ~id:"total"  ~typ:Uint                                  >>
+      asset ~id:"tokenHolder" ~fields:[
+          identifier   "holder"  Address;
+          field        "balance" Uint;
+        ]                                                          >>
+      transaction ~id:"transfer" ~args:[
+          arg "toAddress"  Address;
+          arg "nbTokens"   Uint;
         ]
   in
   print_endline (dump_model erc20_model);
-  print_endline "\nEscrow\n";
   let escrow_model =
-    empty >>
-      mk_state_machine "sm" [
+    model ~name:"Escrow"                                            >>
+      role ~id:"buyer"                                              >>
+      role ~id:"seller"                                             >>
+      state_machine ~id:"sm" ~states:[
           "Created",    SInitial;
           "Aborted",    STerminal;
           "Confirmed",  SBasic;
           "Failed",     STerminal;
           "Transfered", STerminal;
-        ] >>
+        ]                                                          >>
       (* use extension to rm "default_transition with" ... *)
-      mk_transition "sm" "abort" { empty_transition with
+      transition ~machine:"sm" ~id:"abort" ~args:{ empty_transition with
           mFromState = "Created";
           mToState   = "Aborted";
         } in
@@ -226,7 +269,7 @@ let setTokenHolder : assets -> tokenHolder -> assets = fun a _ -> a
 
 (* actual transation code ****************************************************)
 
-let[@Escrow transfer] transfer iAssets iSender ~toAddress:iTo ~nbTokens:iQty =
+let transfer iAssets iSender ~toAddress:iTo ~nbTokens:iQty =
   let lFromholder = getTokenHolder iAssets iSender.address in
   let lFromholder = { balance = lFromholder.balance - iQty; } in
   let lToholder   = getTokenHolder iAssets iTo in
