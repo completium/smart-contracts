@@ -129,24 +129,18 @@ let rec model_to_pojos (mid, e) =
     mPojos  = entities_to_pojos e;
     mFields = [];
   }
-and entities_to_pojos =
+and entities_to_pojos entities =
   List.map (fun e ->
       match e with
-      | Const (id, typ)    ->
-      | Asset (id, fields) -> asset_to_po
+      | Const (id, typ)    -> cons_to_pojo id typ
+      | Asset (id, fields) -> empty_pojo
       | _ -> empty_pojo
-    )
-and cons_to_pojo (id, typ) = {
+    ) entities
+and cons_to_pojo id typ = {
     empty_pojo with
     mTyp = "cons";
     mId = id;
     mExtra = dump_type typ
-  }
-and asset_to_pojo (id, fds) = {
-    empty_pojo with
-    mTyp = "asset";
-    mId = id;
-    mFields = List.map field_to_poj fds;
   }
 
 let dump_field (id,ft) =
