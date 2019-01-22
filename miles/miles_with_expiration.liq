@@ -14,8 +14,9 @@ type owner = {
 }
 
 type storage = {
-  admin  : address;
-  owners : (address, owner) map
+  admin      : address;
+  admin_tmp  : address;
+  owners     : (address, owner) map
 }
 
 let nat_sub (a : nat) (b : nat) =
@@ -23,13 +24,23 @@ let nat_sub (a : nat) (b : nat) =
   | Plus v -> v
   | Minus _ -> Current.failwith "nat_sub result is not a nat."
 
-let%entry add (iParam : address * string * nat * timestamp) storage =
+
+
+let%init storage (admin : address) = {
+  admin  = admin;
+  admin_tmp = admin;
+  owners = (Map : (address, owner) map);
+}
+
+
+
+let%entry add (params : address * string * nat * timestamp) storage =
 let caller     = Current.sender () in
 
-let owner      = iParam.(0) in
-let id         = iParam.(1) in
-let amount     = iParam.(2) in
-let expiration = iParam.(3) in
+let owner      = params.(0) in
+let id         = params.(1) in
+let amount     = params.(2) in
+let expiration = params.(3) in
 
 if (caller <> storage.admin)
 then (Current.failwith ("Caller is not allowed to call this function."));
@@ -63,15 +74,16 @@ let storage = storage.owners <- Map.update owner (Some owner_asset) storage.owne
 (empty_operations, storage)
 
 
-let%entry consume (iParam : address * nat) storage =
+
+let%entry consume (params : address * nat) storage =
 let caller = Current.sender () in
 let now    = Current.time() in
 
 if (caller <> storage.admin)
 then (Current.failwith ("Caller is not allowed to call this function."));
 
-let owner  = iParam.(0) in
-let amount = iParam.(1) in
+let owner  = params.(0) in
+let amount = params.(1) in
 
 let owner_asset =
   match Map.find owner storage.owners with
@@ -108,10 +120,30 @@ let _remainder, miles = List.fold (fun (elt, (remainder, l)) ->
               else (nat_sub remainder elt.amount, l)
     ) available_miles (amount, []) in
 
-(* assert (_remainder = 0) *)
-
 let owner_asset = owner_asset.miles <- miles in
 
 let storage = storage.owners <- Map.update owner (Some owner_asset) storage.owners in
 
+(empty_operations, storage)
+
+
+
+let%entry assign_new_admin (param : address) storage =
+let caller = Current.sender () in
+
+if (caller <> storage.admin)
+then (Current.failwith ("Caller is not allowed to call this function."));
+
+let storage = storage.admin_tmp <- param in
+(empty_operations, storage)
+
+
+
+let%entry confirm_admin (param : address) storage =
+let caller = Current.sender () in
+
+if (caller <> storage.admin_tmp)
+then (Current.failwith ("Caller is not allowed to call this function."));
+
+let storage = storage.admin     <- storage.admin_tmp in
 (empty_operations, storage)
