@@ -139,7 +139,7 @@ let storage = storage.admin_tmp <- param in
 
 
 
-let%entry confirm_admin (param : address) storage =
+let%entry confirm_admin (_param : unit) storage =
 let caller = Current.sender () in
 
 if (caller <> storage.admin_tmp)
