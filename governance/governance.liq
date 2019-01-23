@@ -65,7 +65,7 @@ let%entry start (_params : unit) storage =
 
   check_state_created storage.state;
 
-  if (now > storage.start_date)
+  if (not (now > storage.start_date))
   then (Current.failwith ("Wrong condition."));
 
   let storage = storage.state <- Voting in
@@ -104,7 +104,7 @@ let%entry bury (_params : unit) storage =
 
   check_state_voting storage.state;
 
-  if (now > storage.end_date)
+  if (not (now > storage.end_date))
   then (Current.failwith ("Wrong condition."));
 
   let storage = storage.state <- Buried in
