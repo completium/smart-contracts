@@ -1,7 +1,7 @@
 TEZOS_CLIENT=~/tezos/tezos-client
 LIQUIDITY=liquidity
 
-SRC=escrow.liq
+SRC=erc20.liq
 OUT=$(SRC).tz
 
 $(OUT):

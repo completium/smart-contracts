@@ -1,4 +1,4 @@
-[%%version 0.4]
+[%%version 0.5]
 
 (* ************************************************************************************
     Tools
@@ -134,15 +134,15 @@ let%entry transferPenalty (iParam : unit) iStorage =
 
 let transferBack (iStorage : storage) =
   (* transfer quantity back to buyer *)
-  let lBuyer = Account.default iStorage.mBuyer in
+  let lBuyer = iStorage.mBuyer in
   let lTotal = iStorage.mQuantity + iStorage.mIncentive in
-  let lOps = [Contract.transfer ~dest:lBuyer ~amount:lTotal] in
+  let lOps = [Account.transfer ~dest:lBuyer ~amount:lTotal] in
   (* transfer penalty back to seller *)
   let lOps =
     if iStorage.mPenalty > 0tz
     then
-      let lSeller = Account.default iStorage.mSeller in
-      (Contract.transfer ~dest:lSeller ~amount:(iStorage.mPenalty))::lOps
+      let lSeller = iStorage.mSeller in
+      (Account.transfer ~dest:lSeller ~amount:(iStorage.mPenalty))::lOps
     else lOps in
   lOps
 
@@ -181,15 +181,15 @@ let%entry confirmContract (iParam : unit) iStorage =
 
 let transferAmounts (iStorage : storage) =
   (* transfer quantity and penalty to seller *)
-  let lSeller = Account.default iStorage.mSeller in
+  let lSeller = iStorage.mSeller in
   let lAmount = iStorage.mQuantity + iStorage.mPenalty in
-  let lOps = [Contract.transfer ~dest:lSeller ~amount:lAmount] in
+  let lOps = [Account.transfer ~dest:lSeller ~amount:lAmount] in
   (* transfer incentive back to buyer *)
   let lOps =
     if iStorage.mIncentive > 0tz
     then
-      let lBuyer = Account.default iStorage.mBuyer in
-      (Contract.transfer ~dest:lBuyer ~amount:(iStorage.mIncentive))::lOps
+      let lBuyer = iStorage.mBuyer in
+      (Account.transfer ~dest:lBuyer ~amount:(iStorage.mIncentive))::lOps
     else lOps in
   lOps
 
@@ -244,15 +244,15 @@ let isAfterDeadline (iStorage : storage) =
 
 let transferFailedAmounts (iStorage : storage) =
   (* transfer quantity back to buyer *)
-  let lBuyer = Account.default iStorage.mBuyer in
+  let lBuyer = iStorage.mBuyer in
   let lTotal = iStorage.mQuantity + iStorage.mIncentive in
-  let lOps = [Contract.transfer ~dest:lBuyer ~amount:lTotal] in
+  let lOps = [Account.transfer ~dest:lBuyer ~amount:lTotal] in
   (* transfer penalty to penaltyTo address *)
   let lOps =
     if iStorage.mPenalty > 0tz
     then
-      let lPenaltyTo = Account.default iStorage.mPenaltyTo in
-      (Contract.transfer ~dest:lPenaltyTo ~amount:(iStorage.mPenalty))::lOps
+      let lPenaltyTo = iStorage.mPenaltyTo in
+      (Account.transfer ~dest:lPenaltyTo ~amount:(iStorage.mPenalty))::lOps
     else lOps in
   lOps
 

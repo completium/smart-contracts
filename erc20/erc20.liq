@@ -52,58 +52,38 @@ let execTransfer (iFrom : address) (iTo : address) (iQty : nat) (iBalances : bal
   let lNewBalances = Map.update iTo (Some lNewToBalance) lNewBalances in
   lNewBalances
 
-let%entry transfer (iParam : address * nat) iStorage =
+let%entry transfer (iParam : address * nat) storage =
   let lFrom  = Current.sender () in
   let lTo    = iParam.(0) in
   let lQty   = iParam.(1) in
-  let lNewBalances = execTransfer lFrom lTo lQty iStorage.mBalances in
-  (* OCAML
-  let lStorage = { iStorage with
-                   mBalances    = lNewBalances;
-                 } in
-   *)
-  let lStorage = { mSymbol      = iStorage.mSymbol;
-                   mName        = iStorage.mName;
-                   mTotalSupply = iStorage.mTotalSupply;
-                   mBalances    = lNewBalances;
-                   mAllowed     = iStorage.mAllowed;
-                 } in
-  (gEmptyOp, lStorage)
+  let lNewBalances = execTransfer lFrom lTo lQty storage.mBalances in
+  let storage = storage.mBalances <- lNewBalances in
+  (gEmptyOp, storage)
 
 (* NB :
    1/ anyone can register in allowed map ?
    2/ no check whether the allowed amount is greater than balance ?
  *)
-let%entry approve (iParam : address * nat) iStorage =
+let%entry approve (iParam : address * nat) storage =
   let lFrom  = Current.sender () in
   let lTo    = iParam.(0) in
   let lQty   = iParam.(1) in
   let lFromAllowed =
-    match Map.find lFrom iStorage.mAllowed with
+    match Map.find lFrom storage.mAllowed with
     | Some a -> a
     | None -> (Map : balances) in
-  let lNewFromAllowed = Map.update lTo (Some lQty) lFromAllowed in
-  let lNewAllowed = Map.update lFrom (Some lNewFromAllowed) iStorage.mAllowed in
-  (* OCAML
-  let lStorage = { iStorage with
-                   mAllowed    = lNewAllowed;
-                 } in
-   *)
-  let lStorage = { mSymbol      = iStorage.mSymbol;
-                   mName        = iStorage.mName;
-                   mTotalSupply = iStorage.mTotalSupply;
-                   mBalances    = iStorage.mBalances;
-                   mAllowed     = lNewAllowed;
-                 } in
-  (gEmptyOp, lStorage)
+  let lNewFromAllowed = Map.add lTo lQty lFromAllowed in
+  let lNewAllowed = Map.add lFrom lNewFromAllowed storage.mAllowed in
+  let storage = storage.mAllowed <- lNewAllowed in
+  (gEmptyOp, storage)
 
-let%entry transferFrom (iParam : address * address * nat) iStorage =
+let%entry transferFrom (iParam : address * address * nat) storage =
   let lFrom  = iParam.(0) in
   let lTo    = iParam.(1) in
   let lQty   = iParam.(2) in
   (* update allowed *)
   let lFromAllowed =
-    match Map.find lFrom iStorage.mAllowed with
+    match Map.find lFrom storage.mAllowed with
     | Some q -> q
     | None -> Current.failwith "From address not found in allowed quantities." in
   let lAllowedQty =
@@ -112,19 +92,9 @@ let%entry transferFrom (iParam : address * address * nat) iStorage =
     | None -> Current.failwith "To address not found in From allowed quantities." in
   let lNewAllowedQty = nat_sub lAllowedQty lQty in
   let lNewFromAllowed = Map.update lTo (Some lNewAllowedQty) lFromAllowed in
-  let lNewAllowed = Map.update lFrom (Some lNewFromAllowed) iStorage.mAllowed in
+  let lNewAllowed = Map.update lFrom (Some lNewFromAllowed) storage.mAllowed in
   (* execute transfer *)
-  let lNewBalances = execTransfer lFrom lTo lQty iStorage.mBalances in
-  (* OCAML
-  let lStorage = { iStorage with
-                   mBalances   = lNewBalances;
-                   mAllowed    = lNewAllowed;
-                 } in
-   *)
-  let lStorage = { mSymbol      = iStorage.mSymbol;
-                   mName        = iStorage.mName;
-                   mTotalSupply = iStorage.mTotalSupply;
-                   mBalances    = lNewBalances;
-                   mAllowed     = lNewAllowed;
-                 } in
-  (gEmptyOp, lStorage)
+  let lNewBalances = execTransfer lFrom lTo lQty storage.mBalances in
+  let storage = storage.mBalances <- lNewBalances in
+  let storage = storage.mAllowed <- lNewAllowed in
+  (gEmptyOp, storage)
