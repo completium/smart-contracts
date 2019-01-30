@@ -1,7 +1,7 @@
 TEZOS_CLIENT=~/tezos/tezos-client
 LIQUIDITY=liquidity
 
-SRC=zero_coupon_bound.liq
+SRC=zero_coupon_bond.liq
 OUT=$(SRC).tz
 
 $(OUT):
